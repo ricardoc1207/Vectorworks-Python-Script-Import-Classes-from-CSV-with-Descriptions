@@ -1,0 +1,92 @@
+
+# -*- coding: utf-8 -*-
+import vs
+import csv
+import os
+
+# ==== Ajustes opcionales ====
+TIENE_ENCABEZADO = True   # Pon en False si tu CSV NO tiene fila de encabezados
+DELIMITADOR = ','         # Cambia a ';' si tu CSV usa punto y coma
+CODIFICACION = 'utf-8'    # Cambia a 'utf-8-sig' si ves caracteres raros al inicio
+# ============================
+
+def set_class_description(class_name: str, description: str):
+    """Crea (si hace falta) una clase y le asigna la descripción."""
+    if not class_name:
+        return
+
+    # Crea/activa la clase
+    vs.NameClass(class_name)  # si existe, simplemente la hace activa
+
+    # Obtén el handle de la clase por nombre
+    h_cl = vs.GetObject(class_name)
+    if h_cl is None:
+        # Caso muy raro: si no lo encuentra, aborta esta fila
+        return
+
+    # Escribe la descripción (aparece en Edit Class(es) → Description)
+    # Reemplaza None por '' para evitar errores
+    desc = description if description is not None else ''
+    vs.SetDescriptionText(h_cl, desc)  # <-- API para descripción de clase
+    # (también sirve para capas con el handle correspondiente)
+    # Ref: SetDescriptionText(handle, text)
+
+def importar_clases_y_descripciones_desde_csv(ruta_csv: str):
+    if not os.path.isfile(ruta_csv):
+        vs.AlrtDialog('No se encontró el archivo CSV.')
+        return
+
+    creadas = 0
+    actualizadas = 0
+    saltos = 0
+
+    try:
+        with open(ruta_csv, newline='', encoding=CODIFICACION) as f:
+            lector = csv.reader(f, delimiter=DELIMITADOR)
+            # Salta encabezado si aplica
+            if TIENE_ENCABEZADO:
+                try:
+                    next(lector)
+                except StopIteration:
+                    vs.AlrtDialog('El CSV está vacío.')
+                    return
+
+            for idx, fila in enumerate(lector, start=2 if TIENE_ENCABEZADO else 1):
+                if not fila or len(fila) < 1:
+                    saltos += 1
+                    continue
+
+                nombre = (fila[0] or '').strip()
+                descripcion = (fila[1] if len(fila) > 1 else '').strip()
+
+                if not nombre:
+                    saltos += 1
+                    continue
+
+                # Detecta si la clase ya existía antes de crearla
+                existia = vs.GetObject(nombre) is not None
+                vs.NameClass(nombre)  # crea si no existe
+                set_class_description(nombre, descripcion)
+
+                if existia:
+                    actualizadas += 1
+                else:
+                    creadas += 1
+
+        vs.AlrtDialog(
+            f'Proceso terminado.\n'
+            f'Clases creadas: {creadas}\n'
+            f'Clases actualizadas: {actualizadas}\n'
+            f'Filas ignoradas: {saltos}'
+        )
+    except Exception as e:
+        vs.AlrtDialog(f'Error al importar: {e}')
+
+# --- Diálogo para escoger el CSV ---
+ok, ruta = vs.GetFileN(
+    'Selecciona el archivo CSV',
+    '', '', 'CSV (*.csv)|*.csv'
+)
+
+if ok and ruta:
+    importar_clases_y_descripciones_desde_csv(ruta)
